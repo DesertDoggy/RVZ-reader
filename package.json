@@ -21,8 +21,5 @@
   "allowScripts": {
     "@mongodb-js/zstd@7.0.0": true,
     "lzma-native@8.0.6": true
-  },
-  "devDependencies": {
-    "dolphin-tool": "^0.2606.2"
   }
 }
