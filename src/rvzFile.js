@@ -224,9 +224,15 @@ class RvzFile {
     const flatExceptions = isPartitionData ? [] : null; // { discHashOffset, hash }[]
     let sectorsSoFar = 0;
 
+    // For partition data, chunkSize is the on-disc (hashed) group size; the
+    // logical (dehashed) size per group is smaller by SECTOR_DATA_SIZE/SECTOR_SIZE.
+    const maxGroupLogicalSize = isPartitionData
+      ? (this.chunkSize / SECTOR_SIZE) * SECTOR_DATA_SIZE
+      : this.chunkSize;
+
     for (let g = 0; g < nGroups; g++) {
       const remaining = totalLogicalSize - outPos;
-      const logicalSize = Math.min(this.chunkSize, remaining);
+      const logicalSize = Math.min(maxGroupLogicalSize, remaining);
       const group = this.groups[groupIndex + g];
       const { payload, exceptionLists } = await this._decodeGroupChunk(group, {
         logicalSize,
@@ -269,8 +275,17 @@ class RvzFile {
       for (const rd of this.rawData) {
         const off = Number(rd.rawDataOff);
         const size = Number(rd.rawDataSize);
-        const { data } = await this._decodeRun(rd.groupIndex, rd.nGroups, size, false, 1, off);
-        await out.write(data, 0, data.length, off);
+        // Groups are aligned to chunkSize boundaries relative to the raw_data
+        // run's group-layout origin, which itself is rounded down to a
+        // 32 KiB sector boundary (not a chunkSize boundary) -- e.g. the first
+        // run's offset is 0x80 (the skipped dhead region), which rounds down
+        // to 0, so group 0 actually starts at absolute disc offset 0 and its
+        // first 0x80 bytes must be discarded rather than written out.
+        const groupStart = off - (off % SECTOR_SIZE);
+        const totalLogicalSize = size + (off - groupStart);
+        const { data } = await this._decodeRun(rd.groupIndex, rd.nGroups, totalLogicalSize, false, 1, groupStart);
+        const slice = data.subarray(off - groupStart, off - groupStart + size);
+        await out.write(slice, 0, slice.length, off);
       }
 
       if (this.discType === DiscType.WII) {
@@ -300,7 +315,12 @@ class RvzFile {
             }
 
             const encrypted = rebuildSectors(data, pd.nSectors, part.key, exceptionsByGroup);
-            await out.write(encrypted, 0, encrypted.length, baseDiscOffset);
+            // fs writes are limited to ~2 GiB per call, so write in chunks.
+            const WRITE_CHUNK = 0x10000000;
+            for (let off = 0; off < encrypted.length; off += WRITE_CHUNK) {
+              const len = Math.min(WRITE_CHUNK, encrypted.length - off);
+              await out.write(encrypted, off, len, baseDiscOffset + off);
+            }
           }
         }
       } else {
