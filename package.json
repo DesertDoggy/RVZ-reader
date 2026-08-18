@@ -1,0 +1,22 @@
+{
+  "name": "rvz-reader",
+  "version": "1.0.0",
+  "description": "Convert Dolphin RVZ/WIA disc images to raw ISO/GCM images",
+  "main": "src/index.js",
+  "bin": {
+    "rvz2iso": "src/cli.js"
+  },
+  "scripts": {
+    "test": "node tests/convert.test.js"
+  },
+  "license": "GPL-3.0-or-later",
+  "dependencies": {
+    "@mongodb-js/zstd": "^7.0.0",
+    "lzma-native": "^8.0.6",
+    "seek-bzip": "^2.0.0"
+  },
+  "allowScripts": {
+    "@mongodb-js/zstd@7.0.0": true,
+    "lzma-native@8.0.6": true
+  }
+}
