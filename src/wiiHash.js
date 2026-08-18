@@ -28,49 +28,55 @@ function rebuildSectors(decryptedPayload, sectorCount, titleKey, exceptionsByGro
     throw new Error('Unexpected decrypted payload size for sector rebuild');
   }
 
-  const hashBlocks = new Array(sectorCount);
-  for (let s = 0; s < sectorCount; s++) {
-    const sectorData = decryptedPayload.subarray(
-      s * SECTOR_DATA_SIZE,
-      (s + 1) * SECTOR_DATA_SIZE
-    );
+  const zeroSectorData = Buffer.alloc(SECTOR_DATA_SIZE);
+
+  // Real sectors get their H0 from the actual decrypted data; sectors past the
+  // end of a trailing partial 64-sector group are still hashed (as all-zero
+  // data) so H1/H2 for that group match the real disc, which always hashes a
+  // full nominal 64-sector/8-subgroup tree regardless of how many sectors the
+  // partition actually has.
+  function computeH0(sectorIdx) {
+    const sectorData =
+      sectorIdx < sectorCount
+        ? decryptedPayload.subarray(sectorIdx * SECTOR_DATA_SIZE, (sectorIdx + 1) * SECTOR_DATA_SIZE)
+        : zeroSectorData;
     const hashBlock = Buffer.alloc(SECTOR_HASH_SIZE);
     for (let b = 0; b < H0_COUNT; b++) {
       const block = sectorData.subarray(b * 0x400, (b + 1) * 0x400);
       sha1(block).copy(hashBlock, b * 20);
     }
-    hashBlocks[s] = hashBlock;
+    return hashBlock;
+  }
+
+  const nominalSectorCount = Math.ceil(sectorCount / SECTORS_PER_GROUP) * SECTORS_PER_GROUP;
+  const hashBlocks = new Array(nominalSectorCount);
+  for (let s = 0; s < nominalSectorCount; s++) {
+    hashBlocks[s] = computeH0(s);
   }
 
   // H1: hash of each sector's H0 table, shared across the 8 sectors of a subgroup.
-  for (let sub = 0; sub * SECTORS_PER_SUBGROUP < sectorCount; sub++) {
+  for (let sub = 0; sub * SECTORS_PER_SUBGROUP < nominalSectorCount; sub++) {
     const base = sub * SECTORS_PER_SUBGROUP;
-    const count = Math.min(SECTORS_PER_SUBGROUP, sectorCount - base);
     const h1 = Buffer.alloc(H1_HASHED_SIZE);
-    for (let i = 0; i < count; i++) {
+    for (let i = 0; i < SECTORS_PER_SUBGROUP; i++) {
       const h0 = hashBlocks[base + i].subarray(0, H0_HASHED_SIZE);
       sha1(h0).copy(h1, i * 20);
     }
-    for (let i = 0; i < count; i++) {
+    for (let i = 0; i < SECTORS_PER_SUBGROUP; i++) {
       h1.copy(hashBlocks[base + i], H1_OFFSET);
     }
   }
 
   // H2: hash of each subgroup's H1 table, shared across the 64 sectors of a group.
-  for (let grp = 0; grp * SECTORS_PER_GROUP < sectorCount; grp++) {
+  for (let grp = 0; grp * SECTORS_PER_GROUP < nominalSectorCount; grp++) {
     const groupBase = grp * SECTORS_PER_GROUP;
-    const subCount = Math.min(
-      SUBGROUPS_PER_GROUP,
-      Math.ceil((sectorCount - groupBase) / SECTORS_PER_SUBGROUP)
-    );
     const h2 = Buffer.alloc(SUBGROUPS_PER_GROUP * 20);
-    for (let sg = 0; sg < subCount; sg++) {
+    for (let sg = 0; sg < SUBGROUPS_PER_GROUP; sg++) {
       const sectorIdx = groupBase + sg * SECTORS_PER_SUBGROUP;
       const h1 = hashBlocks[sectorIdx].subarray(H1_OFFSET, H1_OFFSET + H1_HASHED_SIZE);
       sha1(h1).copy(h2, sg * 20);
     }
-    const groupSectorCount = Math.min(SECTORS_PER_GROUP, sectorCount - groupBase);
-    for (let i = 0; i < groupSectorCount; i++) {
+    for (let i = 0; i < SECTORS_PER_GROUP; i++) {
       h2.copy(hashBlocks[groupBase + i], H2_OFFSET);
     }
 

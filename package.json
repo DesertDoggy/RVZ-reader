@@ -9,7 +9,8 @@
   "scripts": {
     "test": "node tests/convert.test.js",
     "test:quick": "node tests/convert.quick.test.js",
-    "test:binary": "node tests/convert.binary.test.js"
+    "test:binary": "node tests/convert.binary.test.js",
+    "test:binary:quick": "node tests/convert.binary.quick.test.js"
   },
   "license": "GPL-3.0-or-later",
   "dependencies": {
