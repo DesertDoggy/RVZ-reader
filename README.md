@@ -2,6 +2,9 @@
 
 Convert Dolphin `.rvz` GameCube/Wii disc images to raw `.iso` images.
 
+.js project with reference to - [bodgit/rvz](https://github.com/bodgit/rvz) — 
+
+
 ## Usage
 
 ```
@@ -19,4 +22,5 @@ rvz2iso.exe "Game.rvz" "D:\output\game.iso"
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
 
